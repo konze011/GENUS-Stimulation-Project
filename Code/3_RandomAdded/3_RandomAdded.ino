@@ -30,12 +30,15 @@ float frequencyLED;
 float frequencySpeaker;
 
 // Default = 40 hz
+unsigned const long delay40Hz = 12500;
+unsigned const long delay1ms = 1000;
 unsigned long delayLED;
-unsigned long delayLEDOn = 12500;
-unsigned long delayLEDOff = 12500;
+unsigned long delayLEDOn = delay40Hz;
+unsigned long delayLEDOff = delay40Hz;
 unsigned long delaySpeaker;
-unsigned long delaySpeakerOn = 12500;
-unsigned long delaySpeakerOff = 12500;
+unsigned long delaySpeakerOn = delay40Hz;
+unsigned long delaySpeakerOff = delay40Hz;
+unsigned long delayRandom;
 
 // User inputs
 float stimulationValue;
@@ -179,6 +182,31 @@ void loop() {
   }
   // RANDOM - first half output is 12.5 ms, second half delay is a random amount of time averaging 12.5 ms
   else {
-    digitalWrite(ledPin, LOW);
+    currentTime = micros();
+
+    // currentTime - previousTimeLEDOff >= delayLEDOff
+    if (currentTime - previousTimeLED >= delayLED) {
+      if (ledState) {
+        delayLED = delay40Hz;
+      } else {
+        delayRandom = random(200, 24800);
+        delayLED = delayRandom;
+      }
+      ledState = !ledState;
+      digitalWrite(ledPin, ledState);
+      previousTimeLED = micros();
+    }
+
+    if (currentTime - previousTimeSpeaker >= delaySpeaker) {
+      if (speakerState) {
+        delaySpeaker = delay40Hz + delayRandom - delay1ms;
+        noTone(speakerPin);
+      } else {
+        delaySpeaker = delay1ms;
+        tone(speakerPin, speakerTone);
+      }
+      speakerState = !speakerState;
+      previousTimeSpeaker = micros();
+    }
   }
 }
