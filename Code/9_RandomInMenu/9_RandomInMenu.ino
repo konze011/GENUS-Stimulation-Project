@@ -20,7 +20,6 @@
 #define TO_MINUTES 60000000
 
 // Pin variables used to set pin I/O
-const int SWITCH_PIN = 8;   // Pin used to read switch 1 state (HIGH = random, LOW = 40hz)
 const int LED_PIN = 11;     // Pin used for digital LED strip signal
 const int SPEAKER_PIN = 6;  // Pin used for digital sound output
 
@@ -42,14 +41,15 @@ unsigned long delayLED;
 unsigned long delayLEDOn = delay40Hz;
 unsigned long delayLEDOff = delay40Hz;
 unsigned long delaySpeaker;
-unsigned long delaySpeakerOn = delay40Hz;
-unsigned long delaySpeakerOff = delay40Hz;
+unsigned long delaySpeakerOn = delay1ms;
+unsigned long delaySpeakerOff = delay40Hz * 2 - delay1ms;
 unsigned long delayRandom;
 unsigned long delayOverall;
 unsigned long delayOverallOn = 0.05 * TO_MINUTES;
 unsigned long delayOverallOff = 0.05 * TO_MINUTES;
 unsigned long delayPhase;
 unsigned long result;
+unsigned long switchValue;
 
 unsigned int speakerTone = 10000;
 unsigned long encoderInputVal;
@@ -72,6 +72,9 @@ unsigned long getOverallOn() {
 }
 unsigned long getOverallOff() {
   return delayOverallOff / TO_MINUTES;
+}
+unsigned long getOverallRandom() {
+  return switchValue;
 }
 unsigned long getSpeakerTone() {
   return speakerTone;
@@ -96,10 +99,11 @@ unsigned long getLEDFreq() {
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // Setting up the LCD menus
-const int menuLength = 8;
+const int menuLength = 9;
 const char* menuItems[] = {
   "O On Dur",
   "O Off Dur",
+  "O Random",
   "S Base Freq",
   "S Duration",
   "S Stim Freq",
@@ -110,6 +114,7 @@ const char* menuItems[] = {
 const char* menuUnits[] = {
   "min",
   "min",
+  "",
   "Hz",
   "ms",
   "Hz",
@@ -120,6 +125,7 @@ const char* menuUnits[] = {
 ValueGetter menuValues[menuLength] = {
   getOverallOn,
   getOverallOff,
+  getOverallRandom,
   getSpeakerTone,
   getSpeakerDuration,
   getSpeakerFreq,
@@ -145,7 +151,6 @@ void setup(void) {
   // Initialize pin I/O
   pinMode(SPEAKER_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-  pinMode(SWITCH_PIN, INPUT);
 
   // Seed random function
   randomSeed(analogRead(0));
@@ -157,13 +162,14 @@ void setup(void) {
   displayMenu();
 
   // Prompt the user to give an input
-  Serial.println();
+  Serial.println("Enter Serial Input:");
 }
 
 void loop(void) {
   // Read user frequency from Serial
   if (Serial.available() > 0) {
     serialInput();
+    displayMenu();
     // Remove extra characters from serial buffer
     while (Serial.available()) Serial.read();
     // Reset stimulation
@@ -178,6 +184,10 @@ void loop(void) {
 
   // Run system on/off logic
   overallStimLogic();
+  // Serial.println(currentTime);
+  // Serial.println(previousTimeOverall);
+  // Serial.println(previousTimeOverall + delayOverall);
+  // Serial.println(overallState);
 
   // End the loop if the system is off
   if (!overallState) {
@@ -255,10 +265,19 @@ void serialInput(void) {
     Serial.print("Speaker ");
     switch (stimulationInput) {
       case 'T':
-        speakerTone = stimulationValue;
-        Serial.println("tone changed");
+        Serial.print("tone: ");
+        if (stimulationValue) {
+          // menuIndex = 3;
+          // applyNewValue(stimulationInput);
+          speakerTone = stimulationValue;
+          Serial.println("changed");
+        } else {
+          Serial.println(speakerTone);
+        }
         break;
       case 'D':
+        menuIndex = 4;
+        // applyNewValue(stimulationInput);
         stimulationValue *= TO_MILIS;
         if (stimulationValue <= delaySpeakerOn + delaySpeakerOff) {
           delaySpeakerOff = delaySpeakerOn + delaySpeakerOff - stimulationValue;
@@ -269,6 +288,8 @@ void serialInput(void) {
         }
         break;
       case 'F':
+        menuIndex = 5;
+        // applyNewValue(stimulationInput);
         stimulationValue = TO_SECONDS / stimulationValue;
         if (delaySpeakerOn < stimulationValue) {
           delaySpeakerOff = stimulationValue - delaySpeakerOn;
@@ -280,6 +301,8 @@ void serialInput(void) {
         }
         break;
       case 'P':
+        menuIndex = 6;
+        // applyNewValue(stimulationInput);
         delayPhase = stimulationValue * TO_MILIS;
         Serial.println("speaker phase changed");
         break;
@@ -293,6 +316,8 @@ void serialInput(void) {
     Serial.print("LED ");
     switch (stimulationInput) {
       case 'D':
+        menuIndex = 7;
+        // applyNewValue(stimulationInput);
         stimulationValue *= TO_MILIS;
         if (stimulationValue <= delayLEDOn + delayLEDOff) {
           delayLEDOff = delayLEDOn + delayLEDOff - stimulationValue;
@@ -303,6 +328,8 @@ void serialInput(void) {
         }
         break;
       case 'F':
+        menuIndex = 8;
+        // applyNewValue(stimulationInput);
         stimulationValue = TO_SECONDS / stimulationValue;
         if (delayLEDOn < stimulationValue) {
           delayLEDOff = stimulationValue - delayLEDOn;
@@ -320,12 +347,32 @@ void serialInput(void) {
   }  // End of LED modification
   // Overall modification
   else if (stimulationMode == 'O') {
+    Serial.print("Overall ");
     switch (stimulationInput) {
       case 'N':
-        delayOverallOn = stimulationValue * TO_MINUTES;
+        Serial.print("on duration: ");
+        // menuIndex = 0;
+        // applyNewValue(stimulationInput);
+        if (stimulationValue) {
+          Serial.print("changed to ");
+          Serial.print(stimulationValue);
+          Serial.println(" minutes");
+          delayOverallOn = stimulationValue * TO_MINUTES;
+        } else {
+          Serial.print(delayOverallOn / TO_MINUTES);
+          Serial.println(" minutes");
+        }
         break;
       case 'F':
-        delayOverallOff = stimulationValue * TO_MINUTES;
+        Serial.print("off duration: ");
+        // menuIndex = 1;
+        // applyNewValue(stimulationInput);
+        if (stimulationValue) {
+          // Serial.println(sprintf("changed to %f minutes", stimulationValue));
+          delayOverallOff = stimulationValue * TO_MINUTES;
+        } else {
+          // Serial.println(sprintf("%lu us", delayOverallOff / TO_MINUTES));
+        }
         break;
       default:
         Serial.println("Invalid overall configuration");
@@ -336,12 +383,13 @@ void serialInput(void) {
   }  // End of invalid modification
 }
 
-void applyNewValue(unsigned long newVal) {
+void applyNewValue(float newVal) {
   switch (menuIndex) {
     case 0: delayOverallOn = newVal * TO_MINUTES; break;   // Overall on
     case 1: delayOverallOff = newVal * TO_MINUTES; break;  // Overall off
-    case 2: speakerTone = newVal; break;                   // Speaker tone
-    case 3:                                                // Speaker duration
+    case 2: switchValue = newVal; break;                   // Overall random
+    case 3: speakerTone = newVal; break;                   // Speaker tone
+    case 4:                                                // Speaker duration
       newVal *= TO_MILIS;
       if (newVal <= delaySpeakerOn + delaySpeakerOff) {
         delaySpeakerOff = delaySpeakerOn + delaySpeakerOff - newVal;
@@ -350,7 +398,7 @@ void applyNewValue(unsigned long newVal) {
         Serial.println("duration longer than total period");
       }
       break;
-    case 4:  // Speaker frequency
+    case 5:  // Speaker frequency
       newVal = TO_SECONDS / newVal;
       if (delaySpeakerOn < newVal) {
         delaySpeakerOff = newVal - delaySpeakerOn;
@@ -361,8 +409,8 @@ void applyNewValue(unsigned long newVal) {
         Serial.println("frequency changed. Speaker duration set to 50%.");
       }
       break;
-    case 5: delayPhase = newVal * TO_MILIS; break;  // Speaker phase
-    case 6:                                         // LED duration
+    case 6: delayPhase = newVal * TO_MILIS; break;  // Speaker phase
+    case 7:                                         // LED duration
       newVal *= TO_MILIS;
       if (newVal <= delayLEDOn + delayLEDOff) {
         delayLEDOff = delayLEDOn + delayLEDOff - newVal;
@@ -372,7 +420,7 @@ void applyNewValue(unsigned long newVal) {
         Serial.println("duration longer than total period");
       }
       break;
-    case 7:  // LED frequency
+    case 8:  // LED frequency
       newVal = TO_SECONDS / newVal;
       if (delayLEDOn < newVal) {
         delayLEDOff = newVal - delayLEDOn;
@@ -417,11 +465,8 @@ void overallStimLogic(void) {
 }
 
 void stimulationLogic(void) {
-  // Take switch input to determine stimulation frequency
-  int switchValue = digitalRead(SWITCH_PIN);
-
   // User input frequency
-  if (switchValue == LOW) {
+  if (switchValue == 0) {
     // currentTime - previousTimeLEDOff >= delayLEDOff
     if (currentTime - previousTimeLED >= delayLED) {
       if (ledState) {
@@ -448,12 +493,13 @@ void stimulationLogic(void) {
   }
   // RANDOM - first half output is 12.5 ms, second half delay is a random amount of time averaging 12.5 ms
   else {
+    delayRandom = random(0.2 * TO_MILIS, (2 * delayLEDOff - 0.2) * TO_MILIS);
+
     // currentTime - previousTimeLEDOff >= delayLEDOff
     if (currentTime - previousTimeLED >= delayLED) {
       if (ledState) {
-        delayLED = delay40Hz;
+        delayLED = delayLEDOff;
       } else {
-        delayRandom = random(200, 24800);
         delayLED = delayRandom;
       }
       ledState = !ledState;
@@ -463,7 +509,7 @@ void stimulationLogic(void) {
 
     if (currentTime - previousTimeSpeaker >= delaySpeaker) {
       if (speakerState) {
-        delaySpeaker = delay40Hz + delayRandom - delay1ms;
+        delaySpeaker = delayLEDOff + delayRandom - delay1ms;
         noTone(SPEAKER_PIN);
       } else {
         delaySpeaker = delay1ms;
