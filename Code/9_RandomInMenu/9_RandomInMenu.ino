@@ -18,6 +18,7 @@
 #define TO_SECONDS 1000000
 #define TO_MILIS 1000
 #define TO_MINUTES 60000000
+#define RANDOM_OFFSET 0.2
 
 // Pin variables used to set pin I/O
 const int LED_PIN = 11;     // Pin used for digital LED strip signal
@@ -272,11 +273,12 @@ void serialInput(void) {
           speakerTone = stimulationValue;
           Serial.println("changed");
         } else {
-          Serial.println(speakerTone);
+          Serial.print(speakerTone);
+          Serial.println(" Hz");
         }
         break;
       case 'D':
-        menuIndex = 4;
+        // menuIndex = 4;
         // applyNewValue(stimulationInput);
         stimulationValue *= TO_MILIS;
         if (stimulationValue <= delaySpeakerOn + delaySpeakerOff) {
@@ -288,7 +290,7 @@ void serialInput(void) {
         }
         break;
       case 'F':
-        menuIndex = 5;
+        // menuIndex = 5;
         // applyNewValue(stimulationInput);
         stimulationValue = TO_SECONDS / stimulationValue;
         if (delaySpeakerOn < stimulationValue) {
@@ -301,7 +303,7 @@ void serialInput(void) {
         }
         break;
       case 'P':
-        menuIndex = 6;
+        // menuIndex = 6;
         // applyNewValue(stimulationInput);
         delayPhase = stimulationValue * TO_MILIS;
         Serial.println("speaker phase changed");
@@ -316,7 +318,7 @@ void serialInput(void) {
     Serial.print("LED ");
     switch (stimulationInput) {
       case 'D':
-        menuIndex = 7;
+        // menuIndex = 7;
         // applyNewValue(stimulationInput);
         stimulationValue *= TO_MILIS;
         if (stimulationValue <= delayLEDOn + delayLEDOff) {
@@ -328,7 +330,7 @@ void serialInput(void) {
         }
         break;
       case 'F':
-        menuIndex = 8;
+        // menuIndex = 8;
         // applyNewValue(stimulationInput);
         stimulationValue = TO_SECONDS / stimulationValue;
         if (delayLEDOn < stimulationValue) {
@@ -365,13 +367,23 @@ void serialInput(void) {
         break;
       case 'F':
         Serial.print("off duration: ");
-        // menuIndex = 1;
-        // applyNewValue(stimulationInput);
         if (stimulationValue) {
-          // Serial.println(sprintf("changed to %f minutes", stimulationValue));
+          Serial.println("changed to ");
+          Serial.print(stimulationValue);
+          Serial.println(" minutes");
           delayOverallOff = stimulationValue * TO_MINUTES;
         } else {
-          // Serial.println(sprintf("%lu us", delayOverallOff / TO_MINUTES));
+          Serial.println(delayOverallOff / TO_MINUTES);
+          Serial.println(" minutes");
+        }
+        break;
+      case 'R':
+        switchValue = stimulationValue;
+        Serial.print("random: ");
+        if (switchValue == 0) {
+          Serial.println("disabled");
+        } else {
+          Serial.println("active");
         }
         break;
       default:
@@ -435,21 +447,26 @@ void applyNewValue(float newVal) {
   stimulationReset();
 }
 
+// "reset" stimulation state and phase offset
 void stimulationReset(void) {
-  // "reset" stimulation state and phase offset
   digitalWrite(LED_PIN, LOW);
   digitalWrite(SPEAKER_PIN, LOW);
+
+  previousTimeOverall = currentTime;
+  previousTimeSpeaker = currentTime;
   if (delaySpeakerOn + delaySpeakerOff == delayLEDOn + delayLEDOff) {
-    previousTimeSpeaker = micros();
     previousTimeLED = previousTimeSpeaker - delayPhase;
   } else {
-    previousTimeSpeaker = micros();
     previousTimeLED = previousTimeSpeaker;
   }
+
+  delaySpeaker = delaySpeakerOff;
+  delayLED = delayLEDOff;
+  delayOverall = delayOverallOn;
 }
 
+// Overall frequency
 void overallStimLogic(void) {
-  // Overall frequency
   if (currentTime - previousTimeOverall >= delayOverall) {
     if (overallState) {
       digitalWrite(LED_PIN, LOW);
@@ -467,7 +484,6 @@ void overallStimLogic(void) {
 void stimulationLogic(void) {
   // User input frequency
   if (switchValue == 0) {
-    // currentTime - previousTimeLEDOff >= delayLEDOff
     if (currentTime - previousTimeLED >= delayLED) {
       if (ledState) {
         delayLED = delayLEDOff;
@@ -493,14 +509,13 @@ void stimulationLogic(void) {
   }
   // RANDOM - first half output is 12.5 ms, second half delay is a random amount of time averaging 12.5 ms
   else {
-    delayRandom = random(0.2 * TO_MILIS, (2 * delayLEDOff - 0.2) * TO_MILIS);
+    delayRandom = random(RANDOM_OFFSET * TO_MILIS, 2 * delayLEDOff - RANDOM_OFFSET * TO_MILIS);
 
-    // currentTime - previousTimeLEDOff >= delayLEDOff
     if (currentTime - previousTimeLED >= delayLED) {
       if (ledState) {
-        delayLED = delayLEDOff;
-      } else {
         delayLED = delayRandom;
+      } else {
+        delayLED = delayLEDOn;
       }
       ledState = !ledState;
       digitalWrite(LED_PIN, ledState);
@@ -508,8 +523,9 @@ void stimulationLogic(void) {
     }
 
     if (currentTime - previousTimeSpeaker >= delaySpeaker) {
+      Serial.println("switch");
       if (speakerState) {
-        delaySpeaker = delayLEDOff + delayRandom - delay1ms;
+        delaySpeaker = delayLEDOn + delayRandom - delay1ms;
         noTone(SPEAKER_PIN);
       } else {
         delaySpeaker = delay1ms;
@@ -522,7 +538,7 @@ void stimulationLogic(void) {
 }
 
 void encoderInput(void) {
-  long encPos = myEnc.read() / 4;
+  int encPos = myEnc.read() / 4;
 
   if (encPos != lastEncPos) {
     int dir = (encPos > lastEncPos) ? 1 : -1;
@@ -530,9 +546,20 @@ void encoderInput(void) {
 
     if (appState == STATE_MENU) {
       menuIndex = constrain(menuIndex + dir, 0, menuLength - 1);
-      // scroll offset: keep selected item visible
-      if (menuIndex < menuScrollOffset) menuScrollOffset = menuIndex;
-      if (menuIndex >= menuScrollOffset + VISIBLE_ROWS) menuScrollOffset = menuIndex - VISIBLE_ROWS + 1;
+
+      if (menuIndex < menuLength - 1) {
+          if (menuIndex >= menuScrollOffset + VISIBLE_ROWS - 1 && 
+              menuScrollOffset < menuLength - VISIBLE_ROWS) {
+            menuScrollOffset++;
+          }
+        }
+
+        if (menuIndex > 0) {
+          if (menuIndex < menuScrollOffset + 1 && menuScrollOffset > 0) {
+            menuScrollOffset--;
+          }
+        }
+
       displayMenu();
     } else {
       encoderInputVal += dir;
