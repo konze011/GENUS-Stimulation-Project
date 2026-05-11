@@ -162,7 +162,7 @@ void setup(void) {
   displayParams();
 
   // Prompt the user to give an input
-  Serial.println("To use serial input begin with 'O', 'S' or 'L' to indicate the stimulation mode.");
+  Serial.println("To use serial input begin with 'O', 'S' or 'L' to indicate the stimulation mode (overall, speaker, or LED).");
   Serial.println("Then type the first letter of what is displayed as a parameter on the LCD ('F', 'D', etc.).");
   Serial.println("Finally, type what you would like the new value of the parameter to be.");
   Serial.println("The units will automatically match what is shown on the LCD");
@@ -263,7 +263,7 @@ void serialInput(void) {
         if (stimulationValue) {
           // menuIndex = 3;
           // applyNewValue(stimulationInput);
-          speakerTone = stimulationValue;
+          speakerTone = (unsigned int)stimulationValue;
           Serial.print("tone changed to: ");
         } else {
           Serial.print("tone is currently: ");
@@ -462,7 +462,7 @@ void applyNewValue(float newVal) {
     case 0: delayOverallOn = newVal * TO_MINUTES; break;   // Overall on
     case 1: delayOverallOff = newVal * TO_MINUTES; break;  // Overall off
     case 2: randomActive = newVal; break;                  // Overall random
-    case 3: speakerTone = newVal; break;                   // Speaker tone
+    case 3: speakerTone = (unsigned int)newVal; break;     // Speaker tone
     case 4:                                                // Speaker duration
       newVal *= TO_MILIS;
       if (newVal <= delaySpeakerOn + delaySpeakerOff) {
